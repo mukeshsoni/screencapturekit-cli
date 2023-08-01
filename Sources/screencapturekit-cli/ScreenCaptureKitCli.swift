@@ -11,7 +11,6 @@ import AVFoundation
 
 import CoreGraphics
 import ScreenCaptureKit
-import Dispatch
 
 @main
 struct ScreenCaptureKitCLI: AsyncParsableCommand {
@@ -26,7 +25,6 @@ struct ScreenCaptureKitCLI: AsyncParsableCommand {
             let url = URL(filePath: FileManager.default.currentDirectoryPath).appending(path: "recording \(Date()).mov")
             //    let cropRect = CGRect(x: 0, y: 0, width: 960, height: 540)
             let screenRecorder = try await ScreenRecorder(url: url, displayID: CGMainDisplayID(), cropRect: nil)
-            var shouldStop = false
             print("Starting screen recording of main display")
             try await screenRecorder.start()
             // TODO: Need some way to keep the program running until the user sends a kill signal
@@ -44,11 +42,6 @@ struct ScreenRecorder {
     private let videoInput: AVAssetWriterInput
     private let streamOutput: StreamOutput
     private var stream: SCStream
-    private var completion: (() -> Void)?
-    
-    mutating func doit(completion: @escaping () -> Void) {
-        self.completion = completion
-    }
     
     init(url: URL, displayID: CGDirectDisplayID, cropRect: CGRect?) async throws {
         
@@ -166,9 +159,6 @@ struct ScreenRecorder {
         // Finish writing
         videoInput.markAsFinished()
         await assetWriter.finishWriting()
-        if let completion = completion {
-            completion()
-        }
     }
     
     private class StreamOutput: NSObject, SCStreamOutput {
