@@ -5,18 +5,19 @@ import PackageDescription
 
 let package = Package(
     name: "screencapturekit-cli",
-    platforms: [ .macOS(.v13) ],
+    platforms: [.macOS(.v13)],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-argument-parser.git", exact: "1.2.2")
+        .package(url: "https://github.com/apple/swift-argument-parser.git", exact: "1.2.2"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
         .executableTarget(
-            name: "screencapturekit-node",
+            name: "screencapturekit-cli",
             dependencies: [
-                .product(name: "ArgumentParser", package: "swift-argument-parser")
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
-            path: "Sources"),
+            path: "Sources"
+        ),
     ]
 )

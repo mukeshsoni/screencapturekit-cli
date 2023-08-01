@@ -1,0 +1,44 @@
+{
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "sourceLanguages": ["swift"],
+      "name": "Debug screencapturekit-node",
+      "program": "${workspaceFolder:screencapturekit-cli}/.build/debug/screencapturekit-node",
+      "args": [],
+      "cwd": "${workspaceFolder:screencapturekit-cli}",
+      "preLaunchTask": "swift: Build Debug screencapturekit-node"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "sourceLanguages": ["swift"],
+      "name": "Release screencapturekit-node",
+      "program": "${workspaceFolder:screencapturekit-cli}/.build/release/screencapturekit-node",
+      "args": [],
+      "cwd": "${workspaceFolder:screencapturekit-cli}",
+      "preLaunchTask": "swift: Build Release screencapturekit-node"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "sourceLanguages": ["swift"],
+      "name": "Debug screencapturekit-cli",
+      "program": "${workspaceFolder:screencapturekit-cli}/.build/debug/screencapturekit-cli",
+      "args": [],
+      "cwd": "${workspaceFolder:screencapturekit-cli}",
+      "preLaunchTask": "swift: Build Debug screencapturekit-cli"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "sourceLanguages": ["swift"],
+      "name": "Release screencapturekit-cli",
+      "program": "${workspaceFolder:screencapturekit-cli}/.build/release/screencapturekit-cli",
+      "args": [],
+      "cwd": "${workspaceFolder:screencapturekit-cli}",
+      "preLaunchTask": "swift: Build Release screencapturekit-cli"
+    }
+  ]
+}
