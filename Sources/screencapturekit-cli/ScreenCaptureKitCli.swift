@@ -15,10 +15,7 @@ import Dispatch
 
 @main
 struct ScreenCaptureKitCLI: AsyncParsableCommand {
-    @Argument(help: "Config as stringified JSON") var config: String;
-    
     mutating func run() async throws {
-        print("Hello \(config)")
         // Create a screen recording
         do {
             // Check for screen recording permission, make sure your terminal has screen recording permission
