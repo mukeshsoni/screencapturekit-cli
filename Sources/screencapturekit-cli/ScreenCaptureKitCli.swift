@@ -5,6 +5,7 @@
 //  Created by Mukesh Soni on 18/07/23.
 //
 
+// import AppKit
 import ArgumentParser
 import AVFoundation
 import Foundation
@@ -12,44 +13,121 @@ import Foundation
 import CoreGraphics
 import ScreenCaptureKit
 
+struct Options: Decodable {
+    let destination: URL
+    let framesPerSecond: Int
+    let cropRect: CGRect?
+    let showCursor: Bool
+    let highlightClicks: Bool
+    let screenId: CGDirectDisplayID
+    let audioDeviceId: String?
+    let videoCodec: String?
+}
+
 @main
 struct ScreenCaptureKitCLI: AsyncParsableCommand {
-    mutating func run() async throws {
-        var keepRunning = true
-        // Create a screen recording
-        do {
-            // Check for screen recording permission, make sure your terminal has screen recording permission
-            guard CGPreflightScreenCaptureAccess() else {
-                throw RecordingError("No screen capture permission")
-            }
+    static var configuration = CommandConfiguration(
+        abstract: "Wrapper around ScreenCaptureKit",
+        subcommands: [List.self, Record.self],
+        defaultSubcommand: Record.self
+    )
+}
 
-            let url = URL(filePath: FileManager.default.currentDirectoryPath).appending(path: "recording \(Date()).mov")
-            //    let cropRect = CGRect(x: 0, y: 0, width: 960, height: 540)
-            let screenRecorder = try await ScreenRecorder(url: url, displayID: CGMainDisplayID(), cropRect: nil)
-            print("Starting screen recording of main display")
-            try await screenRecorder.start()
+extension ScreenCaptureKitCLI {
+    struct List: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "List windows or screens which can be recorded",
+            subcommands: [Screens.self]
+        )
+    }
 
-            // Super duper hacky way to keep waiting for user's kill signal.
-            // I have no idea if i am doing it right
-            signal(SIGINT, SIG_IGN)
-            let sigintSrc = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
-            sigintSrc.setEventHandler {
-                print("Got SIGINT")
-                keepRunning = false
-            }
-            sigintSrc.resume()
-            // Keep looping and checking every 1 second if the user pressed the kill switch
-            while true {
-                if !keepRunning {
-                    try await screenRecorder.stop()
-                    print("We are done. Have saved the recording to a file.")
-                    break
-                } else {
-                    sleep(1)
+    struct Record: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "Start a recording with the given options.")
+
+        @Argument(help: "Stringified JSON object with options passed to ScreenCaptureKitCLI")
+        var options: String
+
+        mutating func run() async throws {
+            var keepRunning = true
+            let options: Options = try options.jsonDecoded()
+
+            print(options)
+            // Create a screen recording
+            do {
+                // Check for screen recording permission, make sure your terminal has screen recording permission
+                guard CGPreflightScreenCaptureAccess() else {
+                    throw RecordingError("No screen capture permission")
                 }
+
+                let screenRecorder = try await ScreenRecorder(url: options.destination, displayID: CGMainDisplayID(), showCursor: options.showCursor, cropRect: options.cropRect)
+                // TODO: These event handlers to get mouse events don't work if i don't run the NSApplication run loop
+                // using NSApplication.shared.run()
+                // But if i do that, then my signal handlers to handle SIGINT, SIGTERM etc. don't work
+                // NSEvent.addGlobalMonitorForEvents(matching: NSEvent.EventTypeMask.any) { event in
+                //     print("mouse or keyboard event:", event)
+                // }
+                // NSEvent.addLocalMonitorForEvents(matching: NSEvent.EventTypeMask.any) { event in
+                //     print("mouse or keyboard event:", event)
+                //     return event
+                // }
+                print("Starting screen recording of main display")
+                try await screenRecorder.start()
+
+                // Super duper hacky way to keep waiting for user's kill signal.
+                // I have no idea if i am doing it right
+                signal(SIGKILL, SIG_IGN)
+                signal(SIGINT, SIG_IGN)
+                signal(SIGTERM, SIG_IGN)
+                let sigintSrc = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+                sigintSrc.setEventHandler {
+                    print("Got SIGINT")
+                    keepRunning = false
+                }
+                sigintSrc.resume()
+                let sigKillSrc = DispatchSource.makeSignalSource(signal: SIGKILL, queue: .main)
+                sigKillSrc.setEventHandler {
+                    print("Got SIGKILL")
+                    keepRunning = false
+                }
+                sigKillSrc.resume()
+                let sigTermSrc = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+                sigTermSrc.setEventHandler {
+                    print("Got SIGTERM")
+                    keepRunning = false
+                }
+                sigTermSrc.resume()
+
+                // If i run the NSApplication run loop, then the mouse events are received
+                // But i couldn't figure out a way to kill this run loop
+                // Also, We have to import AppKit to run NSApplication run loop
+                // await NSApplication.shared.run()
+                // Keep looping and checking every 1 second if the user pressed the kill switch
+                while true {
+                    if !keepRunning {
+                        try await screenRecorder.stop()
+                        print("We are done. Have saved the recording to a file.")
+                        break
+                    } else {
+                        sleep(1)
+                    }
+                }
+            } catch {
+                print("Error during recording:", error)
             }
-        } catch {
-            print("Error during recording:", error)
+        }
+    }
+}
+
+extension ScreenCaptureKitCLI.List {
+    struct Screens: AsyncParsableCommand {
+        mutating func run() async throws {
+            let sharableContent = try await SCShareableContent.current
+            print(sharableContent.displays.count, sharableContent.windows.count, sharableContent.applications.count)
+            let appNames = sharableContent.applications.map {
+                app in
+                ["name": app.applicationName, "process_id": app.processID, "bundle_identifier": app.bundleIdentifier]
+            }
+            try print(toJson(appNames), to: .standardError)
         }
     }
 }
@@ -62,7 +140,7 @@ struct ScreenRecorder {
     private let streamOutput: StreamOutput
     private var stream: SCStream
 
-    init(url: URL, displayID: CGDirectDisplayID, cropRect: CGRect?) async throws {
+    init(url: URL, displayID: CGDirectDisplayID, showCursor: Bool = true, cropRect: CGRect?) async throws {
         // Create AVAssetWriter for a QuickTime movie file
         assetWriter = try AVAssetWriter(url: url, fileType: .mov)
 
@@ -119,28 +197,33 @@ struct ScreenRecorder {
 
         // Create a filter for the specified display
         let sharableContent = try await SCShareableContent.current
+        print(sharableContent.displays.count, sharableContent.windows.count, sharableContent.applications.count)
+        let appNames = sharableContent.applications.map { app in app.applicationName }
+        print(appNames)
+
         guard let display = sharableContent.displays.first(where: { $0.displayID == displayID }) else {
             throw RecordingError("Can't find display with ID \(displayID) in sharable content")
         }
         let filter = SCContentFilter(display: display, excludingWindows: [])
 
-        let configuration = SCStreamConfiguration()
-        configuration.queueDepth = 6
+        let streamConfig = SCStreamConfiguration()
+        streamConfig.showsCursor = showCursor
+        streamConfig.queueDepth = 6
 
         // Make sure to take displayScaleFactor into account
         // otherwise, image is scaled up and gets blurry
         if let cropRect = cropRect {
             // ScreenCaptureKit uses top-left of screen as origin
-            configuration.sourceRect = cropRect
-            configuration.width = Int(cropRect.width) * displayScaleFactor
-            configuration.height = Int(cropRect.height) * displayScaleFactor
+            streamConfig.sourceRect = cropRect
+            streamConfig.width = Int(cropRect.width) * displayScaleFactor
+            streamConfig.height = Int(cropRect.height) * displayScaleFactor
         } else {
-            configuration.width = Int(displaySize.width) * displayScaleFactor
-            configuration.height = Int(displaySize.height) * displayScaleFactor
+            streamConfig.width = Int(displaySize.width) * displayScaleFactor
+            streamConfig.height = Int(displaySize.height) * displayScaleFactor
         }
 
         // Create SCStream and add local StreamOutput object to receive samples
-        stream = SCStream(filter: filter, configuration: configuration, delegate: nil)
+        stream = SCStream(filter: filter, configuration: streamConfig, delegate: nil)
         try stream.addStreamOutput(streamOutput, type: .screen, sampleHandlerQueue: videoSampleBufferQueue)
     }
 
